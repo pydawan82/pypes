@@ -61,11 +61,11 @@ class Stream(Generic[T]):
 
     def map(self, mapping: Callable[[T], U]) -> "Stream[U]":
         """Maps each element of the stream to another with the mapping function"""
-        return Stream(map(mapping, self.stream))
+        return Stream(map(mapping, self))
 
     def filter(self, predicate: Callable[[T], bool]) -> "Stream[T]":
         """Filters elements of the stream that matches the predicate."""
-        return Stream(filter(predicate, self.stream))
+        return Stream(filter(predicate, self))
 
     def filterNone(self) -> "Stream[T]":
         """Filters None values."""
@@ -75,7 +75,7 @@ class Stream(Generic[T]):
     def for_each(self, function: Callable[[T], Any]):
         """Apply the given function for each element of the stream"""
 
-        for value in self.stream:
+        for value in self:
             function(value)
 
     def reduce(self, reducer: Callable[[T, T], T], initial_value: T = None) -> Optional[T]:
@@ -88,7 +88,7 @@ class Stream(Generic[T]):
         skip_first = initial_value == None
         accumulator = initial_value if not skip_first else self.stream[0]
 
-        for value in self.stream:
+        for value in self:
             if skip_first:
                 skip_first = False
                 continue
@@ -115,7 +115,7 @@ class Stream(Generic[T]):
 
     def firstWhere(self, predicate: Callable[[T], bool]) -> Optional[T]:
         """Returns an optional value. The value is the first one that matches the predicate."""
-        for value in self.stream:
+        for value in self:
             if predicate(value):
                 return Optional(value)
 
@@ -137,3 +137,31 @@ class Stream(Generic[T]):
     def __iter__(self) -> Iterator[T]:
         """Iterates over the elements of this stream."""
         return self.stream.__iter__()
+
+
+class CatStream(Stream[T]):
+    stream1: Stream[T]
+    stream2: Stream[T]
+
+    def __init__(self, stream1: Stream[T], stream2: Stream[T]) -> None:
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def __iter__(self) -> Iterator[T]:
+        for value in self.stream1:
+            yield value
+        for value in self.stream2:
+            yield value
+
+
+class TupleStream(Stream[T]):
+    stream1: Stream[T]
+    stream2: Stream[T]
+
+    def __init__(self, stream1: Stream[T], stream2: Stream[T]) -> None:
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def __iter__(self) -> Iterator[T]:
+        for value in zip(self.stream1, self.stream2):
+            yield value

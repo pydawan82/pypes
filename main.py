@@ -1,4 +1,4 @@
-from pypes import Stream
+from pypes import CatStream, Stream, TupleStream
 
 
 def pair(x: int):
@@ -6,13 +6,11 @@ def pair(x: int):
 
 
 def main():
-    res = Stream(range(10)).filter(pair).map(lambda x: x*x).map(str).sum("")
+    s1 = Stream(range(10))
+    s2 = Stream(range(10,20))
 
-    print(res)
-
-    Stream(range(10)).map(lambda x: x *
-                          x).filter(pair).firstWhere(lambda x: x > 50).if_present(print)
-
+    TupleStream(s1, s2).for_each(print)
+    CatStream(s1, s2).for_each(print)
 
 if __name__ == '__main__':
     main()
