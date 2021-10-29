@@ -1,16 +1,27 @@
-from pypes import CatStream, Stream, TupleStream
+from pypes import Stream
 
 
 def pair(x: int):
-    return x % 2 != 0
+    return x % 2 == 0
+
+
+def square(x: int):
+    return x**2
 
 
 def main():
-    s1 = Stream(range(10))
-    s2 = Stream(range(10,20))
+    stream = (Stream(range(10))
+              & Stream(range(10, 20))
+              & Stream(range(20, 30))
+              & Stream(range(30, 40))
+              )
 
-    TupleStream(s1, s2).for_each(print)
-    CatStream(s1, s2).for_each(print)
+    (stream
+     .map(lambda t: sum(t))
+     .dropWhile(lambda x: x<80)
+     .for_each(print)
+     )
+
 
 if __name__ == '__main__':
     main()

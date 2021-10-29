@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, Iterable, Iterator, List, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Iterator, List, Tuple, TypeVar, Union, overload
 
 
 T = TypeVar("T")
@@ -40,7 +40,7 @@ class Optional(Generic[T]):
         return Stream(self)
 
     def __sizeof__(self) -> int:
-        return 1 if self.value != None else 0
+        return 1 if self.is_present() else 0
 
     def __iter__(self):
         if self.value != None:
@@ -122,10 +122,38 @@ class Stream(Generic[T]):
         return Optional()
 
     def dropWhile(self, predicate: Callable[[T], bool]) -> "Stream[T]":
-        pass
+        """Returns a stream where items are dropped while the predicate is true"""
+        return _DropStream(self, predicate)
 
     def takeWhile(self, predicate: Callable[[T], bool]) -> "Stream[T]":
-        pass
+        """Returns a stream where items are taken while the predicate is true"""
+        return _TakeStream(self, predicate)
+
+    def append(self, stream: "Stream[T]") -> "Stream[T]":
+        """Append the stream after this one"""
+        return CatStream(self, stream)
+
+    def __add__(self, stream: "Stream[T]") -> "Stream[T]":
+        """Append the stream after this one"""
+        return self.append(stream)
+
+    def zip(self, stream: "Stream") -> "ZipStream":
+        """
+        Zips the stream.
+        If the stream is already zipped, items are zipped at the same level of tuple.
+        """
+
+        if isinstance(self, ZipStream):
+            return ZipStream(*self.streams, stream)
+        else:
+            return ZipStream(self.stream, stream)
+
+    def __and__(self, stream: "Stream") -> "ZipStream":
+        """
+        Zips the stream.
+        @see zip
+        """
+        return self.zip(stream)
 
     def list(self) -> List[T]:
         """
@@ -140,28 +168,58 @@ class Stream(Generic[T]):
 
 
 class CatStream(Stream[T]):
-    stream1: Stream[T]
-    stream2: Stream[T]
+    streams: List[Stream[T]]
 
-    def __init__(self, stream1: Stream[T], stream2: Stream[T]) -> None:
-        self.stream1 = stream1
-        self.stream2 = stream2
+    def __init__(self, *streams: Stream[T]) -> None:
+        self.streams = streams
 
     def __iter__(self) -> Iterator[T]:
-        for value in self.stream1:
-            yield value
-        for value in self.stream2:
-            yield value
+        for stream in self.streams:
+            for value in stream:
+                yield value
 
 
-class TupleStream(Stream[T]):
-    stream1: Stream[T]
-    stream2: Stream[T]
+class ZipStream(Stream[Tuple[T]]):
+    streams: Tuple[Stream[T]]
 
-    def __init__(self, stream1: Stream[T], stream2: Stream[T]) -> None:
-        self.stream1 = stream1
-        self.stream2 = stream2
+    def __init__(self, *streams: Stream[T]) -> None:
+        self.streams = tuple(streams)
+
+    def __iter__(self) -> Iterator[Tuple[T]]:
+        for values in zip(*self.streams):
+            yield values
+
+class _DropStream(Stream[T]):
+    stream: Stream[T]
+    predicate: Callable[[T], bool]
+
+    def __init__(self, stream: Stream[T], predicate: Callable[[T], bool]):
+        self.stream = stream
+        self.predicate = predicate
 
     def __iter__(self) -> Iterator[T]:
-        for value in zip(self.stream1, self.stream2):
+        dropping = True
+
+        for value in self.stream:
+            if dropping:
+                if self.predicate(value):
+                    continue
+                else:
+                    dropping = False
+
             yield value
+
+class _TakeStream(Stream[T]):
+    stream: Stream[T]
+    predicate: Callable[[T], bool]
+
+    def __init__(self, stream: Stream[T], predicate: Callable[[T], bool]):
+        self.stream = stream
+        self.predicate = predicate
+
+    def __iter__(self) -> Iterator[T]:
+        for value in self.stream:
+            if self.predicate(value):
+                yield value
+            else:
+                break
