@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, Iterable, Iterator, List, Tuple, TypeVar, Union, overload
+from typing import Any, Callable, Generic, Iterable, Iterator, List, Tuple, TypeVar, Union
 
 
 T = TypeVar("T")
@@ -67,7 +67,7 @@ class Stream(Generic[T]):
         """Filters elements of the stream that matches the predicate."""
         return Stream(filter(predicate, self))
 
-    def filterNone(self) -> "Stream[T]":
+    def filter_none(self) -> "Stream[T]":
         """Filters None values."""
 
         return self.filter(lambda x: x != None)
@@ -85,14 +85,10 @@ class Stream(Generic[T]):
         Returns an optional value.
         """
 
-        skip_first = initial_value == None
-        accumulator = initial_value if not skip_first else self.stream[0]
+        iter = self.__iter__()
+        accumulator = initial_value if initial_value!=None else next(iter, None)
 
-        for value in self:
-            if skip_first:
-                skip_first = False
-                continue
-
+        for value in iter:
             accumulator = reducer(accumulator, value)
 
         return Optional(accumulator)
@@ -168,7 +164,7 @@ class Stream(Generic[T]):
 
 
 class CatStream(Stream[T]):
-    streams: List[Stream[T]]
+    streams: Tuple[Stream[T]]
 
     def __init__(self, *streams: Stream[T]) -> None:
         self.streams = streams
@@ -183,7 +179,7 @@ class ZipStream(Stream[Tuple[T]]):
     streams: Tuple[Stream[T]]
 
     def __init__(self, *streams: Stream[T]) -> None:
-        self.streams = tuple(streams)
+        self.streams = streams
 
     def __iter__(self) -> Iterator[Tuple[T]]:
         for values in zip(*self.streams):
