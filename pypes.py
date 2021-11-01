@@ -1,9 +1,28 @@
 from typing import Any, Callable, Generic, Iterable, Iterator, List, Tuple, TypeVar, Union
-
+import time
 
 T = TypeVar("T")
 U = TypeVar("U")
 
+
+def _getitem(stream: "Stream[T]", position: int) -> T:
+    try:
+        if type(stream) == Stream:
+            return stream._stream[position]
+    except TypeError:
+        pass
+
+    iter = stream.__iter__()
+    count = 0
+
+    try:
+        while count<position:
+            next(iter)
+            count +=1
+    except StopIteration:
+        return IndexError()
+
+    return next(iter)
 
 class Optional(Generic[T]):
     """
@@ -50,14 +69,14 @@ class Optional(Generic[T]):
 class Stream(Generic[T]):
     """A wrapper class to pipeline functional operations."""
 
-    stream: Iterable[T]
+    _stream: Iterable[T]
     """The underlying iterable resource of this Stream."""
 
     def __init__(self, stream: Iterable[T]) -> None:
         """Creates a new Stream given an iterable object."""
         super().__init__()
 
-        self.stream = stream
+        self._stream = stream
 
     def map(self, mapping: Callable[[T], U]) -> "Stream[U]":
         """Maps each element of the stream to another with the mapping function"""
@@ -78,6 +97,21 @@ class Stream(Generic[T]):
         for value in self:
             function(value)
 
+    def for_each_and(self, function: Callable[[T], Any], between: Callable[[], Any]):
+        iter = self.__iter__()
+
+        try:
+            value = next(iter)
+            while True:
+                function(value)
+                value = next(iter)
+                between()
+        except StopIteration:
+            pass
+    
+    def for_each_sleep(self, function: Callable[[T], Any], secs: float):
+        self.for_each_and(function, lambda: time.sleep(secs))
+
     def reduce(self, reducer: Callable[[T, T], T], initial_value: T = None) -> Optional[T]:
         """
         Performs reduction over the elements of the stream using the reduction function.
@@ -86,7 +120,10 @@ class Stream(Generic[T]):
         """
 
         iter = self.__iter__()
-        accumulator = initial_value if initial_value!=None else next(iter, None)
+        try:
+            accumulator = initial_value if initial_value!=None else next(iter, None)
+        except StopIteration:
+            return Optional()
 
         for value in iter:
             accumulator = reducer(accumulator, value)
@@ -95,7 +132,7 @@ class Stream(Generic[T]):
 
     def count(self) -> int:
         """Returns the number of elements in this stream."""
-        return len(self.stream)
+        return len(self._stream)
 
     def join(self, separator="") -> str:
         """Maps elements to their string representation and join them using the given separator."""
@@ -109,7 +146,7 @@ class Stream(Generic[T]):
         """
         return self.reduce(lambda x, y: x+y, initial_value).value
 
-    def firstWhere(self, predicate: Callable[[T], bool]) -> Optional[T]:
+    def first_where(self, predicate: Callable[[T], bool]) -> Optional[T]:
         """Returns an optional value. The value is the first one that matches the predicate."""
         for value in self:
             if predicate(value):
@@ -117,11 +154,17 @@ class Stream(Generic[T]):
 
         return Optional()
 
-    def dropWhile(self, predicate: Callable[[T], bool]) -> "Stream[T]":
+    def only(self, length: int) -> "Stream[T]":
+        return _OnlyStream(self, length)
+
+    def skip(self, length: int) -> "Stream[T]":
+        return _SkipStream(self, length)
+
+    def drop_while(self, predicate: Callable[[T], bool]) -> "Stream[T]":
         """Returns a stream where items are dropped while the predicate is true"""
         return _DropStream(self, predicate)
 
-    def takeWhile(self, predicate: Callable[[T], bool]) -> "Stream[T]":
+    def take_while(self, predicate: Callable[[T], bool]) -> "Stream[T]":
         """Returns a stream where items are taken while the predicate is true"""
         return _TakeStream(self, predicate)
 
@@ -140,9 +183,9 @@ class Stream(Generic[T]):
         """
 
         if isinstance(self, ZipStream):
-            return ZipStream(*self.streams, stream)
+            return ZipStream(*self._streams, stream)
         else:
-            return ZipStream(self.stream, stream)
+            return ZipStream(self, stream)
 
     def __and__(self, stream: "Stream") -> "ZipStream":
         """
@@ -156,40 +199,56 @@ class Stream(Generic[T]):
         Creates a list with the elements of this stream.
         Thus, the stream must be bounded.
         """
-        return list(self.stream)
+        return list(self)
+
+    def tuple(self) -> Tuple[T]:
+        """
+        Creates a tuple from this Stream.
+        Equivalent to `tuple(self)`
+        """
+        return tuple(self)
+
+    def get(self, position: int) -> T:
+        """
+        Returns the nth element in this stream
+        """
+        return _getitem(self, position)
+
+    def __getitem__(self, position: int) -> T:
+        return self.get(position)
 
     def __iter__(self) -> Iterator[T]:
         """Iterates over the elements of this stream."""
-        return self.stream.__iter__()
+        return self._stream.__iter__()
 
 
 class CatStream(Stream[T]):
-    streams: Tuple[Stream[T]]
+    _streams: Tuple[Iterable[T]]
 
-    def __init__(self, *streams: Stream[T]) -> None:
-        self.streams = streams
+    def __init__(self, *streams: Iterable[T]) -> None:
+        self._streams = streams
 
     def __iter__(self) -> Iterator[T]:
-        for stream in self.streams:
+        for stream in self._streams:
             for value in stream:
                 yield value
 
 
 class ZipStream(Stream[Tuple[T]]):
-    streams: Tuple[Stream[T]]
+    _streams: Tuple[Iterable[T]]
 
-    def __init__(self, *streams: Stream[T]) -> None:
-        self.streams = streams
+    def __init__(self, *streams: Iterable[T]) -> None:
+        self._streams = streams
 
     def __iter__(self) -> Iterator[Tuple[T]]:
-        for values in zip(*self.streams):
+        for values in zip(*self._streams):
             yield values
 
 class _DropStream(Stream[T]):
-    stream: Stream[T]
+    stream: Iterable[T]
     predicate: Callable[[T], bool]
 
-    def __init__(self, stream: Stream[T], predicate: Callable[[T], bool]):
+    def __init__(self, stream: Iterable[T], predicate: Callable[[T], bool]):
         self.stream = stream
         self.predicate = predicate
 
@@ -206,10 +265,10 @@ class _DropStream(Stream[T]):
             yield value
 
 class _TakeStream(Stream[T]):
-    stream: Stream[T]
+    stream: Iterable[T]
     predicate: Callable[[T], bool]
 
-    def __init__(self, stream: Stream[T], predicate: Callable[[T], bool]):
+    def __init__(self, stream: Iterable[T], predicate: Callable[[T], bool]):
         self.stream = stream
         self.predicate = predicate
 
@@ -219,3 +278,34 @@ class _TakeStream(Stream[T]):
                 yield value
             else:
                 break
+
+class _OnlyStream(Stream[T]):
+    stream: Iterable[T]
+    length: int
+
+    def __init__(self, stream: Iterable[T], length: int):
+        self.stream = stream
+        self.length = length
+
+    def __iter__(self) -> Iterator[T]:
+        for value,_ in zip(self.stream, range(self.length)):
+            yield value
+
+class _SkipStream(Stream[T]):
+    stream: Iterable[T]
+    length: int
+
+    def __init__(self, stream: Iterable[T], length: int):
+        self.stream = stream
+        self.length = length
+
+    def __iter__(self) -> Iterator[T]:
+        iter = self.stream.__iter__()
+        for value, _ in zip(iter, range(self.length)):
+            pass
+        
+        for value in iter:
+            yield value
+        
+    def get(self, position:int):
+        return _getitem(self.stream, position+self.length)
