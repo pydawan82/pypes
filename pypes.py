@@ -19,10 +19,11 @@ def _getitem(stream: "Stream[T]", position: int) -> T:
         while count<position:
             next(iter)
             count +=1
+            
+        return next(iter)
     except StopIteration:
-        return IndexError()
+        return IndexError("Index out of bounds")
 
-    return next(iter)
 
 class Optional(Generic[T]):
     """
@@ -290,6 +291,11 @@ class _OnlyStream(Stream[T]):
     def __iter__(self) -> Iterator[T]:
         for value,_ in zip(self.stream, range(self.length)):
             yield value
+    
+    def get(self, position:int):
+        if position >= self.length:
+            raise IndexError("Index out of bounds")
+        return _getitem(self.stream, position) 
 
 class _SkipStream(Stream[T]):
     stream: Iterable[T]

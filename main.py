@@ -13,9 +13,8 @@ def fibo():
 
 
 def main():
-    stream = Stream(list(range(100)))
+    stream = Stream(list(range(100))).only(15)
     print(stream[10])
-    print(stream[20])
 
 if __name__ == '__main__':
     main()
